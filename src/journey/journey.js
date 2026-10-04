@@ -87,6 +87,7 @@ export class Journey {
     this.fov = STOPS[0].fov;
     this.stop = 0;
     this.restK = 1;
+    this.breath = 0;
   }
 
   tAtLength(s) {
@@ -155,10 +156,11 @@ export class Journey {
     this._e.y += -this.parallax.x * 0.06 - this.drag.x;
     this._e.x = clamp(this._e.x - this.parallax.y * 0.035 - this.drag.y, -1.45, 1.2);
     cam.quaternion.setFromEuler(this._e);
-    // a breath of motion while still, so a rest never looks like a frozen frame
-    const t = performance.now() * 0.001;
-    cam.position.y += Math.sin(t * 0.55) * 0.006 * this.restK;
-    cam.position.x += Math.sin(t * 0.31) * 0.004 * this.restK;
+    // a breath of motion while still, so a rest never looks like a frozen frame; on the frame clock, so a frozen
+    // frame (__dbg.freeze) holds still
+    this.breath += dt;
+    cam.position.y += Math.sin(this.breath * 0.55) * 0.006 * this.restK;
+    cam.position.x += Math.sin(this.breath * 0.31) * 0.004 * this.restK;
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
 
     // sliding doors open as you approach and close behind you

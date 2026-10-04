@@ -214,6 +214,8 @@ vec3 sfAmbientVis(vec3 wp, vec3 n, out float skyVis, out vec4 vsOut){
 const LAMPS = /* glsl */ `
 vec3 sfLamps(vec3 wp, vec3 nW, float wrap){
   vec3 acc = vec3(0.0);
+  // by day every lamp's colour is zero
+  if (uLampOn <= 0.0) return acc;
   for (int i = 0; i < ${MAX_LAMPS}; i++){
     vec4 lp = uLampPos[i];
     vec3 L = lp.xyz - wp;

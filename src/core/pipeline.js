@@ -51,7 +51,10 @@ export class Pipeline {
 
     const depthA = new THREE.DepthTexture(4, 4);
     depthA.type = THREE.UnsignedIntType;
-    this.rtOpaque = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4, depthBuffer: true, depthTexture: depthA, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
+    // at 2x and above the pixels are fine enough that 2 samples resolve edges and leaf coverage as well as 4 did
+    // (frozen-frame A/B), at half the cost
+    const samples = Math.min(window.devicePixelRatio || 1, 2) >= 1.5 ? 2 : 4;
+    this.rtOpaque = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples, depthBuffer: true, depthTexture: depthA, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
     const depthB = new THREE.DepthTexture(4, 4);
     depthB.type = THREE.UnsignedIntType;
     this.rtMain = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, depthBuffer: true, depthTexture: depthB, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, generateMipmaps: false });
@@ -103,6 +106,7 @@ export class Pipeline {
     this.step = 1.1;
     this.settle = 0;
     this.settleRun = 0;
+    this.stallRate = 0;
     this.clock = 0;
     this._sorted = new Float32Array(90);
     this.frame = 0;
@@ -141,6 +145,14 @@ export class Pipeline {
   govern(dtMs) {
     if (this.lockScale) return;
     this.clock += dtMs / 1000;
+    // a lone long frame is a shader compile or a texture upload, not the scale; overload shows as a run of
+    // missed vsyncs. Long frames are left out unless they come often
+    this.stallRate = this.stallRate * 0.98 + (dtMs > 45 ? 0.02 : 0);
+    if (dtMs > 45 && this.stallRate < 0.15) {
+      // nor are they clean: a stall holds off the next probe
+      this.clean = 0;
+      return;
+    }
     // reallocating the targets stalls a few frames; those say nothing about the new scale, so they are not counted.
     // Counting starts after a run of clean frames. A probe that cannot produce that run within its settle time has
     // already failed; any other change just starts counting when the time runs out
@@ -168,7 +180,8 @@ export class Pipeline {
     let misses = 0;
     for (let i = n - 1; i >= 0 && arr[i] > 21; i--) misses++;
     // the target is 60 fps whatever the display; rAF timestamps jitter by a couple of ms around 16.7
-    const over = p90 > 19.5 || misses > n * 0.03;
+    const slow = p90 > 19.5;
+    const over = slow || misses > n * 0.03;
     this.clean = dtMs > 21 ? 0 : this.clean + dtMs / 1000;
     if (this.cooldown > 0) return;
     if (this.probing) {
@@ -177,7 +190,9 @@ export class Pipeline {
       this.probing = false;
       this.step = 1.1;
     } else if (over) {
-      this.setScale(this.scale * 0.88);
+      // a slow window steps well down; a trickle of misses among frames on time only a little, so the scale settles
+      // near what the GPU holds instead of overshooting below it
+      this.setScale(this.scale * (slow ? 0.88 : 0.95));
     } else if (this.scale < this.maxScale && this.clean > this.probeWait && this.step > 1.015) {
       this.preProbe = this.scale;
       if (this.setScale(this.scale * this.step)) {

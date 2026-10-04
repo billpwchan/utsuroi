@@ -108,9 +108,10 @@ Everything is plain [three.js](https://threejs.org) r186, with no engine and no 
 
 A render-scale governor holds 60 fps. It steps down on missed frames and probes back up after a run of clean ones.
 
-Measured at 1920 × 1080 at 2× on an Apple M4 Max in Chrome:
-- at rest, p50 is 16.7 ms and p95 is 18.7 ms;
-- p99 reaches about 33 ms during the opening and fast scrolls, while textures upload.
+Measured at 1920 × 1080 at 2× on an Apple M4 Max in Chrome, over the whole walk:
+- p50 is 16.7 ms and p95 is 17.6 ms;
+- p99 reaches about 33 ms during the opening and fast scrolls, while textures upload;
+- the render scale averages 0.84 of full size. A reduced frame is upsampled with a Catmull-Rom filter and sharpened in step with the scale.
 
 Textures are KTX2, transcoded to BC7 or ASTC on the GPU, and geometry is meshopt-compressed. A first visit downloads about 160 MB.
 

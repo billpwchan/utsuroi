@@ -230,6 +230,10 @@ const GROUND_FRAG = /* glsl */ `
     return vec4(dome * k1, (d1 < 0.5 ? 2.0 * k1 / 0.5 : 0.0) * r1, sqrt(d2) - sqrt(d1));
   }
   vec2 siteUv(vec3 p){ return (p.xz - uSite.xy) / uSite.zw; }
+  // the ground's xz across one pixel, taken before any branch: a layer's textures are read inside the branch that
+  // skips it, where the GPU's own derivatives are undefined, so each read is given its gradient (uv = k xz + c)
+  vec2 sfDwx, sfDwy;
+  #define SFG(t, uv, k) textureGrad(t, uv, (k) * sfDwx, (k) * sfDwy)
   // cells: x the nearest cell's hash, y the next nearest's, z the distance to the border between them (cell units)
   vec3 sfCells(vec2 p){
     vec2 ip = floor(p), fp = fract(p);
@@ -244,7 +248,7 @@ const GROUND_FRAG = /* glsl */ `
   }
   float sfSegD(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
   float rakePhase(vec2 p){
-    vec4 rk = texture2D(tRake, (p - uSite.xy) / uSite.zw);
+    vec4 rk = textureGrad(tRake, (p - uSite.xy) / uSite.zw, sfDwx / uSite.zw, sfDwy / uSite.zw);
     float ringD = rk.g * 4.0, edgeD = rk.b * 2.0;
     float wR = smoothstep(1.3, 1.1, ringD);
     float wE = smoothstep(0.33, 0.27, edgeD) * (1.0 - wR);
@@ -303,90 +307,106 @@ export async function createTerrain() {
         vec4 cv = texture2D(tCover, siteUv(vSfWP));
         vec4 rk = texture2D(tRake, siteUv(vSfWP));
         vec2 wxz = vSfWP.xz;
+        sfDwx = dFdx(wxz); sfDwy = dFdy(wxz);
         float inSite = step(0.0, siteUv(vSfWP).x) * step(siteUv(vSfWP).x, 1.0) * step(0.0, siteUv(vSfWP).y) * step(siteUv(vSfWP).y, 1.0);
         cv = mix(vec4(0.45, 0.0, 0.0, 1.0), cv, inSite);
         rk = mix(vec4(0.0, 1.0, 0.0, 1.0), rk, inSite);
         float dist = length(vSfWP - cameraPosition);
-        // ---- moss: two scanned carpets in drifts over low hummocks: bright cushion moss, and sugigoke with the
-        // needles and grit of a real floor in it, which takes over where the moss thins toward bare earth
         float mn1 = sfFbm(wxz * 1.3), mn2 = sfNoise(wxz * 7.0);
-        vec2 uMA = wxz / 0.42, uMC = MROT * wxz / 0.45 + 1.3;
-        vec4 mA0 = texture2D(tMossA, uMA), mA = mA0;
-        // a second lay of the cushion carpet, turned and shifted, mixed in by noise so its clumps never line up
-        // in rows
-        mA = mix(mA, texture2D(tMossA, MROT * MROT * wxz / 0.47 + 7.9), smoothstep(0.35, 0.65, sfNoise(wxz * 1.7 + 3.1)));
-        // the scan is a grey-olive in daylight; pulled toward the green of a living carpet
-        const vec3 SUGI = vec3(0.27, 0.33, 0.15);
-        vec3 mC = texture2D(tSugi, uMC).rgb * SUGI;
-        // a few metres off the fine tiles blur to one flat green, so the same carpets laid five times larger
-        // carry the clumps out into the distance
-        float far = smoothstep(3.0, 14.0, dist);
-        mA = mix(mA, (mA + texture2D(tMossA, MROT * wxz / 2.2 + 0.4)) * 0.5, far);
-        mC = mix(mC, (mC + texture2D(tSugi, wxz / 2.4 + 5.1).rgb * SUGI) * 0.5, far);
-        // the carpet is a patchwork of colonies of four kinds, each of its own colour, meeting the others along a
-        // seam; cells of one kind run together, so colonies come in every size and shape. Sugigoke leans toward
-        // the paths and banks
-        vec2 cq = wxz / 1.5 + (vec2(sfNoise(wxz * 0.8 + 2.0), sfNoise(wxz * 0.8 + 9.0)) - 0.5) * 1.1
-          + (vec2(sfNoise(wxz * 3.3 + 4.0), sfNoise(wxz * 3.3 + 12.0)) - 0.5) * 0.42 + (mn2 - 0.5) * 0.1;
-        vec3 cell = sfCells(cq);
-        float kind = floor(cell.x * 4.0), kind2 = floor(cell.y * 4.0);
-        // a colony's edge is a hand-wide fringe where the two mosses grow into each other
-        float fringe = (1.0 - smoothstep(0.0, 0.1, cell.z + (sfNoise(wxz * 9.0 + 3.0) - 0.5) * 0.06)) * 0.5 * (kind == kind2 ? 0.0 : 1.0);
-        vec4 kA = vec4(step(2.5, kind), step(0.5, kind) * step(kind, 1.5), step(1.5, kind) * step(kind, 2.5), kind / 3.0);
-        vec4 kB = vec4(step(2.5, kind2), step(0.5, kind2) * step(kind2, 1.5), step(1.5, kind2) * step(kind2, 2.5), kind2 / 3.0);
-        vec4 kM = mix(kA, kB, fringe);
-        vec2 colony = vec2(kM.w, kind == kind2 ? 1.0 : cell.z);
-        float mwB = clamp(kM.x + cv.a * 0.4 + (sfFbm(wxz * 0.32 + 9.0) - 0.5) * 0.3, 0.0, 1.0);
-        // the cushion scan's green carries almost no blue, which reads as lawn; keep its light and dark and pull the
-        // hue toward the olive and yellow-greens of a moss garden, drifting from patch to patch, with dry olive spots
-        vec3 cushion = mA.rgb * vec3(1.1, 1.14, 1.12);
-        float ml = dot(cushion, vec3(0.2126, 0.7152, 0.0722));
-        vec3 hue = mix(vec3(0.62, 1.0, 0.32), vec3(0.8, 1.0, 0.27), kM.y);
-        hue = mix(hue, vec3(0.86, 0.95, 0.46), kM.z * 0.3);
-        cushion = mix(cushion, hue * ml / dot(hue, vec3(0.2126, 0.7152, 0.0722)), 0.62);
-        vec3 moss = mix(cushion, mC, mwB);
-        float mHt = mix(mA.a, clamp(dot(mC, vec3(0.333)) / 0.07 * 0.5, 0.0, 1.0), mwB);
+        // each layer's weight comes first, so a layer with none is skipped. The hummocks' height stays outside the
+        // branches: its slope is taken from screen derivatives
+        float wMoss = cv.r, wGrav = cv.g, wPeb = cv.b, wEarth = cv.a, wPath = rk.r;
+        // moss edges break up along the noise rather than the mask's bilinear ramp
+        float mEdge = smoothstep(0.3, 0.7, wMoss + (mn2 - 0.5) * 0.5);
+        float sGrav = smoothstep(0.4, 0.6, wGrav), sPath = smoothstep(0.4, 0.6, wPath);
+        // ---- beyond the wall: the floor of the woods. Litter of cedar needles, twigs and leaves, dark and damp under the
+        // canopy; moss in drifts, thickest along the wall's shaded foot; river pebbles where the coping drips; the
+        // approach in fitted stone from the gate out into the trees, a trodden verge either side
+        vec2 wq = vec2(max(WALLR.x - wxz.x, wxz.x - WALLR.z), max(WALLR.y - wxz.y, wxz.y - WALLR.w));
+        float wOutD = max(wq.x, wq.y);
+        float wOut = smoothstep(0.24, 0.3, wOutD);
+        float wMo = 0.0, wDrip = 0.0, wAp = 0.0;
+        if (wOut > 0.0) wMo = smoothstep(0.5, 0.74, sfFbm(wxz * 0.33 + 5.0) * 0.85 + smoothstep(3.5, 0.6, wOutD) * 0.3 + (mn2 - 0.5) * 0.12);
+        bool needMoss = mEdge * (1.0 - wEarth * 0.85) > 0.002 || wOut * wMo > 0.002;
         // hummocks a few centimetres high: drier and lighter on top, deeper green in the hollows
         float hum = sfFbm(wxz * 0.9 + 21.0) * 0.06 + sfNoise(wxz * 3.1) * 0.012;
-        // and patch to patch, a metre or two across: some cushions thick and lit, some thin and dark over damp soil
-        float patchK = colony.x * 0.5 + sfFbm(wxz * 0.6 + 41.0) * 0.5;
-        moss *= mix(0.7, 1.08, smoothstep(0.012, 0.05, hum)) * (0.6 + 0.62 * mn1) * mix(0.88, 1.06, smoothstep(0.2, 0.8, patchK));
-        // where two colonies meet the carpet dips and thins, here and there: a dark seam, older brown stems in it
-        float cseam = smoothstep(0.0, 0.035, colony.y + (mn2 - 0.5) * 0.03);
-        moss *= mix(vec3(1.0), mix(vec3(0.66, 0.6, 0.48), vec3(1.0), cseam), smoothstep(0.4, 0.7, sfNoise(wxz * 1.9 + 6.0)));
-        // cushions a hand across within clumps a forearm across; their seams hold shade and old brown stems
-        float polK = smoothstep(26.0, 6.0, dist);
-        vec4 pol1 = sfPolster(wxz / 0.075), pol2 = sfPolster(MROT * wxz / 0.3 + 3.7);
-        // only here and there does a seam open far enough to show shade
-        float seam = mix(1.0, smoothstep(0.0, 0.3, pol2.w), 0.35 * smoothstep(0.45, 0.75, sfNoise(wxz * 2.3 + 8.0)));
-        // the light the hollows between cushions never see, which shows in shade where no slope does
-        moss *= mix(vec3(1.0), vec3(seam * (0.66 + 0.4 * sqrt(pol1.x)) * (0.8 + 0.26 * pol2.x)), polK * (1.0 - mwB * 0.5));
-        // autumn leaves fallen on the moss, a frost-browned winter
-        moss = mix(moss, moss * vec3(1.15, 0.95, 0.75), uSeason.z * 0.35);
-        moss = mix(moss, vec3(0.13, 0.13, 0.07), uSeason.w * 0.4);
-        // ---- earth and pebbles: scanned
-        vec3 earthC = texture2D(tEarth, wxz / 2.2).rgb * vec3(0.72, 0.66, 0.58);
-        vec3 pebC = texture2D(tPeb, wxz / 1.1).rgb * vec3(0.5, 0.5, 0.52);
-        // ---- gravel: shirakawa-suna, crushed granite: pale grey with warm feldspar and dark mica specks, about half
-        // the light it receives (paper white would be twice that)
-        vec3 gravC = texture2D(tGrav, wxz / 0.9).rgb;
-        gravC = mix(vec3(dot(gravC, vec3(0.333))), gravC, 0.4) * vec3(0.8, 0.77, 0.71) + 0.012;
-        // ---- path
-        vec3 stoneC = texture2D(tStone, wxz / 2.6).rgb * vec3(0.8, 0.78, 0.74);
-
         // the scan is an orange autumn litter (linear mean 0.24, 0.13, 0.056); a wet temple wood's is darker and browner
         const vec3 LIT = vec3(0.48, 0.56, 0.72);
         vec2 uL = wxz / 1.7;
-        vec3 litC = texture2D(tLitter, uL).rgb * LIT;
-        litC = mix(litC, texture2D(tLitter, MROT * wxz / 4.1 + 3.3).rgb * LIT, smoothstep(0.35, 0.65, sfNoise(wxz * 0.4 + 11.0)) * 0.55);
-        // ---- under the garden's trees: the moss in their shade is deeper and cooler and thinner, the tree's litter
-        // lying in it (needles under the pines, last year's leaves under the maples); in spring the weeping cherry
-        // drops its petals round it
-        float canopy = smoothstep(0.15, 0.75, texture2D(tRake, siteUv(vSfWP)).a) * inSite;
-        moss *= mix(vec3(1.0), vec3(0.7, 0.8, 0.8), canopy);
-        float litIn = canopy * smoothstep(0.42, 0.72, sfFbm(wxz * 0.9 + 31.0) + (mn2 - 0.5) * 0.25);
-        moss = mix(moss, litC * vec3(0.85, 0.82, 0.78), litIn * 0.75);
-        {
+        vec3 litC = vec3(0.0);
+        if (needMoss || wOut > 0.0) {
+          litC = SFG(tLitter, uL, 1.0 / 1.7).rgb * LIT;
+          litC = mix(litC, SFG(tLitter, MROT * wxz / 4.1 + 3.3, MROT / 4.1).rgb * LIT, smoothstep(0.35, 0.65, sfNoise(wxz * 0.4 + 11.0)) * 0.55);
+        }
+        // ---- moss: two scanned carpets in drifts over low hummocks: bright cushion moss, and sugigoke with the
+        // needles and grit of a real floor in it, which takes over where the moss thins toward bare earth
+        vec2 uMA = wxz / 0.42, uMC = MROT * wxz / 0.45 + 1.3;
+        // the scan is a grey-olive in daylight; pulled toward the green of a living carpet
+        const vec3 SUGI = vec3(0.27, 0.33, 0.15);
+        vec4 mA0 = vec4(0.0), pol1 = vec4(0.0), pol2 = vec4(0.0);
+        vec3 mC = vec3(0.0), moss = vec3(0.0);
+        float mwB = 0.0, mHt = 0.0, polK = 0.0;
+        if (needMoss) {
+          mA0 = SFG(tMossA, uMA, 1.0 / 0.42);
+          vec4 mA = mA0;
+          // a second lay of the cushion carpet, turned and shifted, mixed in by noise so its clumps never line up
+          // in rows
+          mA = mix(mA, SFG(tMossA, MROT * MROT * wxz / 0.47 + 7.9, MROT * MROT / 0.47), smoothstep(0.35, 0.65, sfNoise(wxz * 1.7 + 3.1)));
+          mC = SFG(tSugi, uMC, MROT / 0.45).rgb * SUGI;
+          // a few metres off the fine tiles blur to one flat green, so the same carpets laid five times larger
+          // carry the clumps out into the distance
+          float far = smoothstep(3.0, 14.0, dist);
+          mA = mix(mA, (mA + SFG(tMossA, MROT * wxz / 2.2 + 0.4, MROT / 2.2)) * 0.5, far);
+          mC = mix(mC, (mC + SFG(tSugi, wxz / 2.4 + 5.1, 1.0 / 2.4).rgb * SUGI) * 0.5, far);
+          // the carpet is a patchwork of colonies of four kinds, each of its own colour, meeting the others along a
+          // seam; cells of one kind run together, so colonies come in every size and shape. Sugigoke leans toward
+          // the paths and banks
+          vec2 cq = wxz / 1.5 + (vec2(sfNoise(wxz * 0.8 + 2.0), sfNoise(wxz * 0.8 + 9.0)) - 0.5) * 1.1
+            + (vec2(sfNoise(wxz * 3.3 + 4.0), sfNoise(wxz * 3.3 + 12.0)) - 0.5) * 0.42 + (mn2 - 0.5) * 0.1;
+          vec3 cell = sfCells(cq);
+          float kind = floor(cell.x * 4.0), kind2 = floor(cell.y * 4.0);
+          // a colony's edge is a hand-wide fringe where the two mosses grow into each other
+          float fringe = (1.0 - smoothstep(0.0, 0.1, cell.z + (sfNoise(wxz * 9.0 + 3.0) - 0.5) * 0.06)) * 0.5 * (kind == kind2 ? 0.0 : 1.0);
+          vec4 kA = vec4(step(2.5, kind), step(0.5, kind) * step(kind, 1.5), step(1.5, kind) * step(kind, 2.5), kind / 3.0);
+          vec4 kB = vec4(step(2.5, kind2), step(0.5, kind2) * step(kind2, 1.5), step(1.5, kind2) * step(kind2, 2.5), kind2 / 3.0);
+          vec4 kM = mix(kA, kB, fringe);
+          vec2 colony = vec2(kM.w, kind == kind2 ? 1.0 : cell.z);
+          mwB = clamp(kM.x + cv.a * 0.4 + (sfFbm(wxz * 0.32 + 9.0) - 0.5) * 0.3, 0.0, 1.0);
+          // the cushion scan's green carries almost no blue, which reads as lawn; keep its light and dark and pull the
+          // hue toward the olive and yellow-greens of a moss garden, drifting from patch to patch, with dry olive spots
+          vec3 cushion = mA.rgb * vec3(1.1, 1.14, 1.12);
+          float ml = dot(cushion, vec3(0.2126, 0.7152, 0.0722));
+          vec3 hue = mix(vec3(0.62, 1.0, 0.32), vec3(0.8, 1.0, 0.27), kM.y);
+          hue = mix(hue, vec3(0.86, 0.95, 0.46), kM.z * 0.3);
+          cushion = mix(cushion, hue * ml / dot(hue, vec3(0.2126, 0.7152, 0.0722)), 0.62);
+          moss = mix(cushion, mC, mwB);
+          mHt = mix(mA.a, clamp(dot(mC, vec3(0.333)) / 0.07 * 0.5, 0.0, 1.0), mwB);
+          // and patch to patch, a metre or two across: some cushions thick and lit, some thin and dark over damp soil
+          float patchK = colony.x * 0.5 + sfFbm(wxz * 0.6 + 41.0) * 0.5;
+          moss *= mix(0.7, 1.08, smoothstep(0.012, 0.05, hum)) * (0.6 + 0.62 * mn1) * mix(0.88, 1.06, smoothstep(0.2, 0.8, patchK));
+          // where two colonies meet the carpet dips and thins, here and there: a dark seam, older brown stems in it
+          float cseam = smoothstep(0.0, 0.035, colony.y + (mn2 - 0.5) * 0.03);
+          moss *= mix(vec3(1.0), mix(vec3(0.66, 0.6, 0.48), vec3(1.0), cseam), smoothstep(0.4, 0.7, sfNoise(wxz * 1.9 + 6.0)));
+          // cushions a hand across within clumps a forearm across; their seams hold shade and old brown stems
+          polK = smoothstep(26.0, 6.0, dist);
+          pol1 = sfPolster(wxz / 0.075);
+          pol2 = sfPolster(MROT * wxz / 0.3 + 3.7);
+          // only here and there does a seam open far enough to show shade
+          float seam = mix(1.0, smoothstep(0.0, 0.3, pol2.w), 0.35 * smoothstep(0.45, 0.75, sfNoise(wxz * 2.3 + 8.0)));
+          // the light the hollows between cushions never see, which shows in shade where no slope does
+          moss *= mix(vec3(1.0), vec3(seam * (0.66 + 0.4 * sqrt(pol1.x)) * (0.8 + 0.26 * pol2.x)), polK * (1.0 - mwB * 0.5));
+          // autumn leaves fallen on the moss, a frost-browned winter
+          moss = mix(moss, moss * vec3(1.15, 0.95, 0.75), uSeason.z * 0.35);
+          moss = mix(moss, vec3(0.13, 0.13, 0.07), uSeason.w * 0.4);
+          // ---- under the garden's trees: the moss in their shade is deeper and cooler and thinner, the tree's litter
+          // lying in it (needles under the pines, last year's leaves under the maples); in spring the weeping cherry
+          // drops its petals round it
+          float canopy = smoothstep(0.15, 0.75, rk.a) * inSite;
+          moss *= mix(vec3(1.0), vec3(0.7, 0.8, 0.8), canopy);
+          float litIn = canopy * smoothstep(0.42, 0.72, sfFbm(wxz * 0.9 + 31.0) + (mn2 - 0.5) * 0.25);
+          moss = mix(moss, litC * vec3(0.85, 0.82, 0.78), litIn * 0.75);
+        }
+        if (uSeason.x > 0.0) {
           float pr = length(wxz - vec2(-15.4, 13.0));
           float fall = uSeason.x * smoothstep(6.0, 1.5, pr + (sfNoise(wxz * 0.9) - 0.5) * 2.0);
           // single petals near to, each a small notched oval at its own angle in a cell of its own; further off
@@ -405,45 +425,48 @@ export async function createTerrain() {
           float cover = mix(dens * 0.07, petal, near);
           moss = mix(moss, vec3(0.56, 0.4, 0.43) * (0.8 + 0.3 * sfHash12(pid + 1.3)), cover * 0.85);
         }
-
-        float wMoss = cv.r, wGrav = cv.g, wPeb = cv.b, wEarth = cv.a, wPath = rk.r;
         // ---- under the bamboo: a mat of its own fallen leaves, straw and khaki, darker where it lies damp; moss
         // only in patches between the culms. (Off the gravel, the rake mask's blue is the grove's density)
-        {
-          float grove = smoothstep(0.15, 0.7, rk.b) * (1.0 - smoothstep(0.05, 0.3, wGrav));
-          vec3 bamC = texture2D(tLitter, MROT * wxz / 0.75 + 1.7).rgb * LIT * vec3(1.45, 1.3, 0.9);
-          bamC = mix(bamC, texture2D(tLitter, wxz / 1.9 + 5.1).rgb * LIT * vec3(1.2, 1.1, 0.8), 0.4);
+        float grove = smoothstep(0.15, 0.7, rk.b) * (1.0 - smoothstep(0.05, 0.3, wGrav));
+        if (needMoss && grove > 0.0) {
+          vec3 bamC = SFG(tLitter, MROT * wxz / 0.75 + 1.7, MROT / 0.75).rgb * LIT * vec3(1.45, 1.3, 0.9);
+          bamC = mix(bamC, SFG(tLitter, wxz / 1.9 + 5.1, 1.0 / 1.9).rgb * LIT * vec3(1.2, 1.1, 0.8), 0.4);
           // bamboo leaves dry to a grey khaki, far less orange than broadleaf litter
           bamC = mix(vec3(dot(bamC, vec3(0.2126, 0.7152, 0.0722))), bamC, 0.45) * vec3(1.0, 0.97, 0.84) * 0.9;
           bamC *= mix(1.0, 0.62, smoothstep(0.42, 0.7, sfFbm(wxz * 0.7 + 2.0)));
           float keepMoss = smoothstep(0.58, 0.82, sfFbm(wxz * 0.45 + 17.0) + (mn2 - 0.5) * 0.2);
           moss = mix(moss, mix(bamC, moss * 0.75, keepMoss), grove);
         }
+        // ---- earth and pebbles: scanned
+        vec3 earthC = texture2D(tEarth, wxz / 2.2).rgb * vec3(0.72, 0.66, 0.58);
+        vec3 pebC = texture2D(tPeb, wxz / 1.1).rgb * vec3(0.5, 0.5, 0.52);
         // bare soil: dry and pale under the eaves and by the paths, dark and damp where it shows through the moss
         vec3 col = earthC * mix(vec3(1.0), vec3(0.8, 0.95, 0.7), 0.3 * mn1) * mix(vec3(0.42, 0.38, 0.33), vec3(1.0), smoothstep(0.2, 0.7, wEarth));
-        // moss edges break up along the noise rather than the mask's bilinear ramp
-        float mEdge = smoothstep(0.3, 0.7, wMoss + (mn2 - 0.5) * 0.5);
         col = mix(col, moss, mEdge * (1.0 - wEarth * 0.85));
         col = mix(col, pebC, smoothstep(0.35, 0.65, wPeb));
-        col = mix(col, gravC, smoothstep(0.4, 0.6, wGrav));
-        col = mix(col, stoneC, smoothstep(0.4, 0.6, wPath));
-        // ---- beyond the wall: the floor of the woods. Litter of cedar needles, twigs and leaves, dark and damp under the
-        // canopy; moss in drifts, thickest along the wall's shaded foot; river pebbles where the coping drips; the
-        // approach in fitted stone from the gate out into the trees, a trodden verge either side
-        vec2 wq = vec2(max(WALLR.x - wxz.x, wxz.x - WALLR.z), max(WALLR.y - wxz.y, wxz.y - WALLR.w));
-        float wOutD = max(wq.x, wq.y);
-        float wOut = smoothstep(0.24, 0.3, wOutD);
-        float hk = sfFbm(wxz * 0.21 + 23.0);
-        litC *= mix(vec3(0.6, 0.58, 0.6), vec3(1.1, 1.0, 0.9), smoothstep(0.3, 0.75, hk));
-        float wMo = smoothstep(0.5, 0.74, sfFbm(wxz * 0.33 + 5.0) * 0.85 + smoothstep(3.5, 0.6, wOutD) * 0.3 + (mn2 - 0.5) * 0.12);
-        vec3 woods = mix(litC, moss * vec3(0.78, 0.8, 0.72), wMo);
-        float wDrip = smoothstep(0.27, 0.33, wOutD) * smoothstep(0.86, 0.76, wOutD + (sfNoise(wxz * 5.0) - 0.5) * 0.08);
-        woods = mix(woods, pebC * vec3(0.85, 0.85, 0.82), wDrip);
-        float apD = sfApproachD(wxz);
-        float wAp = smoothstep(0.04, -0.04, apD + (sfNoise(wxz * 2.7) - 0.5) * 0.1);
-        woods = mix(woods, earthC * vec3(0.5, 0.46, 0.42), smoothstep(0.45, 0.05, apD) * (1.0 - wAp) * 0.75);
-        woods = mix(woods, stoneC, wAp);
-        col = mix(col, woods, wOut);
+        if (sGrav > 0.0) {
+          // ---- gravel: shirakawa-suna, crushed granite: pale grey with warm feldspar and dark mica specks, about half
+          // the light it receives (paper white would be twice that)
+          vec3 gravC = SFG(tGrav, wxz / 0.9, 1.0 / 0.9).rgb;
+          gravC = mix(vec3(dot(gravC, vec3(0.333))), gravC, 0.4) * vec3(0.8, 0.77, 0.71) + 0.012;
+          col = mix(col, gravC, sGrav);
+        }
+        // ---- path
+        vec3 stoneC = vec3(0.0);
+        if (sPath > 0.0 || wOut > 0.0) stoneC = SFG(tStone, wxz / 2.6, 1.0 / 2.6).rgb * vec3(0.8, 0.78, 0.74);
+        col = mix(col, stoneC, sPath);
+        if (wOut > 0.0) {
+          float hk = sfFbm(wxz * 0.21 + 23.0);
+          litC *= mix(vec3(0.6, 0.58, 0.6), vec3(1.1, 1.0, 0.9), smoothstep(0.3, 0.75, hk));
+          vec3 woods = mix(litC, moss * vec3(0.78, 0.8, 0.72), wMo);
+          wDrip = smoothstep(0.27, 0.33, wOutD) * smoothstep(0.86, 0.76, wOutD + (sfNoise(wxz * 5.0) - 0.5) * 0.08);
+          woods = mix(woods, pebC * vec3(0.85, 0.85, 0.82), wDrip);
+          float apD = sfApproachD(wxz);
+          wAp = smoothstep(0.04, -0.04, apD + (sfNoise(wxz * 2.7) - 0.5) * 0.1);
+          woods = mix(woods, earthC * vec3(0.5, 0.46, 0.42), smoothstep(0.45, 0.05, apD) * (1.0 - wAp) * 0.75);
+          woods = mix(woods, stoneC, wAp);
+          col = mix(col, woods, wOut);
+        }
         // the pond floor: river pebbles under a film of silt, wet dark earth at the waterline; nothing green
         // grows under the water
         float uwFloor = smoothstep(WATER_Y - 0.06, WATER_Y - 0.22, vSfWP.y);
@@ -463,21 +486,22 @@ export async function createTerrain() {
       `,
       normal: /* glsl */ `
         {
-          // the rake: lines along the house, rings round the rocks, a line following the border; ridges ~9.5 cm
-          float e = 0.025;
-          float p0 = rakePhase(vSfWP.xz), px = rakePhase(vSfWP.xz + vec2(e, 0.0)), pz = rakePhase(vSfWP.xz + vec2(0.0, e));
-          float r0 = rakeRidge(p0);
-          float amp = 0.02 * smoothstep(30.0, 5.0, dist);
-          vec2 gR = vec2(rakeRidge(px) - r0, rakeRidge(pz) - r0) / e * amp;
-          // moss: tilt from the carpets' height channel (the unit budget has no room for their normal maps);
-          // the rotated carpet's gradient is turned back into world axes
-          const float EU = 2.0 / 1024.0;
-          vec2 gA = vec2(texture2D(tMossA, uMA + vec2(EU, 0.0)).a - mA0.a, texture2D(tMossA, uMA + vec2(0.0, EU)).a - mA0.a) / (EU * 0.42);
-          // the sugigoke has no height map, and no unit is left for its normal map: its brightness is read as
-          // height, the tips catching the light
-          float lC = dot(mC, vec3(0.333));
-          vec2 nC = -vec2(dot(texture2D(tSugi, uMC + vec2(EU, 0.0)).rgb * SUGI, vec3(0.333)) - lC, dot(texture2D(tSugi, uMC + vec2(0.0, EU)).rgb * SUGI, vec3(0.333)) - lC) / (EU * 0.45) * 0.01;
-          vec2 gMoss = mix(-gA * 0.0075, nC * MROT, mwB);
+          float r0 = 1.0;
+          vec2 gR = vec2(0.0), nG = vec2(0.0);
+          if (sfMix.y > 0.0) {
+            // the rake: lines along the house, rings round the rocks, a line following the border; ridges ~9.5 cm
+            float e = 0.025;
+            float p0 = rakePhase(vSfWP.xz), px = rakePhase(vSfWP.xz + vec2(e, 0.0)), pz = rakePhase(vSfWP.xz + vec2(0.0, e));
+            r0 = rakeRidge(p0);
+            float amp = 0.02 * smoothstep(30.0, 5.0, dist);
+            gR = vec2(rakeRidge(px) - r0, rakeRidge(pz) - r0) / e * amp;
+            // gravel grain: brightness of the scan read as height (lit stones stand proud)
+            const float EG = 1.5 / 1024.0;
+            vec2 uG = vSfWP.xz / 0.9;
+            float lG = dot(SFG(tGrav, uG, 1.0 / 0.9).rgb, vec3(0.333));
+            nG = -vec2(dot(SFG(tGrav, uG + vec2(EG, 0.0), 1.0 / 0.9).rgb, vec3(0.333)) - lG, dot(SFG(tGrav, uG + vec2(0.0, EG), 1.0 / 0.9).rgb, vec3(0.333)) - lG) / (EG * 0.9) * 0.004;
+          }
+          vec2 gMoss = vec2(0.0);
           // the hummocks' slope from screen derivatives: x and z of the surface against the change of height
           {
             vec3 dpx = dFdx(vSfWP), dpy = dFdy(vSfWP);
@@ -486,24 +510,33 @@ export async function createTerrain() {
             vec2 gH = abs(det) > 1e-9 ? vec2(hx * dpy.z - hy * dpx.z, hy * dpx.x - hx * dpy.x) / det : vec2(0.0);
             gMoss -= gH;
           }
-          // the cushions' domes: up to 7 mm over a 7.5 cm cell, 2.2 cm over a 30 cm clump
-          gMoss -= (pol1.yz * (0.007 / 0.075) + pol2.yz * MROT * (0.022 / 0.3)) * polK * (1.0 - mwB * 0.5);
+          if (needMoss) {
+            // moss: tilt from the carpets' height channel (the unit budget has no room for their normal maps);
+            // the rotated carpet's gradient is turned back into world axes
+            const float EU = 2.0 / 1024.0;
+            vec2 gA = vec2(SFG(tMossA, uMA + vec2(EU, 0.0), 1.0 / 0.42).a - mA0.a, SFG(tMossA, uMA + vec2(0.0, EU), 1.0 / 0.42).a - mA0.a) / (EU * 0.42);
+            // the sugigoke has no height map, and no unit is left for its normal map: its brightness is read as
+            // height, the tips catching the light
+            float lC = dot(mC, vec3(0.333));
+            vec2 nC = -vec2(dot(SFG(tSugi, uMC + vec2(EU, 0.0), MROT / 0.45).rgb * SUGI, vec3(0.333)) - lC, dot(SFG(tSugi, uMC + vec2(0.0, EU), MROT / 0.45).rgb * SUGI, vec3(0.333)) - lC) / (EU * 0.45) * 0.01;
+            gMoss += mix(-gA * 0.0075, nC * MROT, mwB);
+            // the cushions' domes: up to 7 mm over a 7.5 cm cell, 2.2 cm over a 30 cm clump
+            gMoss -= (pol1.yz * (0.007 / 0.075) + pol2.yz * MROT * (0.022 / 0.3)) * polK * (1.0 - mwB * 0.5);
+          }
           // scanned normal maps for the rest, laid in world xz (tangent y is world -z)
           // earth and litter: their brightness read as height (no unit is left for their normal maps)
           const float EE = 1.5 / 2048.0;
           vec2 uE = vSfWP.xz / 2.2;
           float lE = dot(texture2D(tEarth, uE).rgb, vec3(0.333));
           vec2 nE = -vec2(dot(texture2D(tEarth, uE + vec2(EE, 0.0)).rgb, vec3(0.333)) - lE, dot(texture2D(tEarth, uE + vec2(0.0, EE)).rgb, vec3(0.333)) - lE) / (EE * 2.2) * 0.005;
-          float lL = dot(texture2D(tLitter, uL).rgb, vec3(0.333));
-          vec2 nL = -vec2(dot(texture2D(tLitter, uL + vec2(EE, 0.0)).rgb, vec3(0.333)) - lL, dot(texture2D(tLitter, uL + vec2(0.0, EE)).rgb, vec3(0.333)) - lL) / (EE * 1.7) * 0.007;
-          nE = mix(nE, nL, wOut);
-          vec2 nP = (texture2D(tGroundN, vSfWP.xz / 1.1).zw * 2.0 - 1.0) * 1.1;
-          // gravel grain: brightness of the scan read as height (lit stones stand proud)
-          const float EG = 1.5 / 1024.0;
-          vec2 uG = vSfWP.xz / 0.9;
-          float lG = dot(texture2D(tGrav, uG).rgb, vec3(0.333));
-          vec2 nG = -vec2(dot(texture2D(tGrav, uG + vec2(EG, 0.0)).rgb, vec3(0.333)) - lG, dot(texture2D(tGrav, uG + vec2(0.0, EG)).rgb, vec3(0.333)) - lG) / (EG * 0.9) * 0.004;
-          vec2 nS = (texture2D(tGroundN, vSfWP.xz / 2.6).xy * 2.0 - 1.0) * 0.9;
+          if (wOut > 0.0) {
+            float lL = dot(SFG(tLitter, uL, 1.0 / 1.7).rgb, vec3(0.333));
+            vec2 nL = -vec2(dot(SFG(tLitter, uL + vec2(EE, 0.0), 1.0 / 1.7).rgb, vec3(0.333)) - lL, dot(SFG(tLitter, uL + vec2(0.0, EE), 1.0 / 1.7).rgb, vec3(0.333)) - lL) / (EE * 1.7) * 0.007;
+            nE = mix(nE, nL, wOut);
+          }
+          vec2 nP = vec2(0.0), nS = vec2(0.0);
+          if (sfMix.z > 0.0) nP = (SFG(tGroundN, vSfWP.xz / 1.1, 1.0 / 1.1).zw * 2.0 - 1.0) * 1.1;
+          if (sfMix.w > 0.0) nS = (SFG(tGroundN, vSfWP.xz / 2.6, 1.0 / 2.6).xy * 2.0 - 1.0) * 0.9;
           vec2 slope = nE;
           slope = mix(slope, gMoss, sfMix.x);
           slope = mix(slope, nP, sfMix.z);
@@ -527,8 +560,10 @@ export async function createTerrain() {
           // the woods' floor past the reach of the shadow maps: only flecks of sun get down through the canopy
           {
             float deep = wOut * smoothstep(3.0, 9.0, wOutD) * smoothstep(24.0, 34.0, length(vSfWP - cameraPosition));
-            float fleck = smoothstep(0.55, 0.8, sfNoise(vSfWP.xz * 0.9 + 7.0) * 0.6 + sfNoise(vSfWP.xz * 3.7) * 0.4);
-            reflectedLight.directDiffuse *= mix(1.0, 0.12 + 0.6 * fleck, deep);
+            if (deep > 0.0) {
+              float fleck = smoothstep(0.55, 0.8, sfNoise(vSfWP.xz * 0.9 + 7.0) * 0.6 + sfNoise(vSfWP.xz * 3.7) * 0.4);
+              reflectedLight.directDiffuse *= mix(1.0, 0.12 + 0.6 * fleck, deep);
+            }
           }
           // under the pond the sun arrives as caustics, cast down along the refracted light
           float uw = smoothstep(WATER_Y - 0.01, WATER_Y - 0.1, vSfWP.y);

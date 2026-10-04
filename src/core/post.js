@@ -31,6 +31,7 @@ export class Post {
   constructor(renderer) {
     this.renderer = renderer;
     this.fs = new FullScreen();
+    this._db = new THREE.Vector2();
     this.mips = [];
     this.levels = 6;
     for (let i = 0; i < this.levels; i++) this.mips.push(new THREE.WebGLRenderTarget(4, 4, rtOpts));
@@ -152,6 +153,7 @@ export class Post {
       precision highp float;
       uniform sampler2D tScene, tBloom, tShaft, tVol, tExp;
       uniform vec2 uSrcTexel;
+      uniform float uScale;
       uniform float uExposure, uBloom, uShaft, uTime, uSharpen, uVignette, uSat, uFade, uChroma, uVolK, uAdapt;
       uniform vec3 uWB, uFadeCol, uShaftCol, uLift;
       uniform vec2 uSunUv; uniform float uSunVeil, uAspect, uNightK, uContrast;
@@ -185,19 +187,41 @@ export class Post {
       }
       vec3 toSRGB(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 
+      // Catmull-Rom from five bilinear taps: a reduced render scale upsampled without bilinear's blur
+      vec3 sampleCR(vec2 uv){
+        vec2 sp = uv / uSrcTexel;
+        vec2 t1 = floor(sp - 0.5) + 0.5;
+        vec2 f = sp - t1;
+        vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+        vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+        vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+        vec2 w3 = f * f * (-0.5 + 0.5 * f);
+        vec2 w12 = w1 + w2;
+        vec2 t0 = (t1 - 1.0) * uSrcTexel, t3 = (t1 + 2.0) * uSrcTexel, t12 = (t1 + w2 / w12) * uSrcTexel;
+        float a = w12.x * w0.y, b = w0.x * w12.y, m = w12.x * w12.y, d = w3.x * w12.y, e = w12.x * w3.y;
+        return (texture2D(tScene, vec2(t12.x, t0.y)).rgb * a + texture2D(tScene, vec2(t0.x, t12.y)).rgb * b
+              + texture2D(tScene, t12).rgb * m + texture2D(tScene, vec2(t3.x, t12.y)).rgb * d
+              + texture2D(tScene, vec2(t12.x, t3.y)).rgb * e) / (a + b + m + d + e);
+      }
+
       void main(){
-        vec3 c = texture2D(tScene, vUv).rgb;
+        vec3 c0 = texture2D(tScene, vUv).rgb;
+        vec3 nu = texture2D(tScene, vUv + vec2(0.0, uSrcTexel.y)).rgb, nd = texture2D(tScene, vUv - vec2(0.0, uSrcTexel.y)).rgb;
+        vec3 nr = texture2D(tScene, vUv + vec2(uSrcTexel.x, 0.0)).rgb, nl = texture2D(tScene, vUv - vec2(uSrcTexel.x, 0.0)).rgb;
+        vec3 c = c0;
+        // held to the cross's range, so the cubic's lobes cannot ring around HDR highlights
+        if (uScale < 0.995) c = clamp(sampleCR(vUv), min(min(nu, nd), min(min(nr, nl), c0)), max(max(nu, nd), max(max(nr, nl), c0)));
         vec2 cuv = vUv - 0.5;
         if (uChroma > 0.0) {
+          // the fringe as an offset from the plain sample, so the upsampled centre keeps its filter
           vec2 off = cuv * dot(cuv, cuv) * uChroma;
-          c.r = texture2D(tScene, vUv - off).r;
-          c.b = texture2D(tScene, vUv + off).b;
+          c.r += texture2D(tScene, vUv - off).r - c0.r;
+          c.b += texture2D(tScene, vUv + off).b - c0.b;
         }
-        vec3 n = texture2D(tScene, vUv + vec2(0.0, uSrcTexel.y)).rgb + texture2D(tScene, vUv - vec2(0.0, uSrcTexel.y)).rgb
-               + texture2D(tScene, vUv + vec2(uSrcTexel.x, 0.0)).rgb + texture2D(tScene, vUv - vec2(uSrcTexel.x, 0.0)).rgb;
-        vec3 hp = c - n * 0.25;
+        vec3 hp = c - (nu + nd + nr + nl) * 0.25;
         float lc = dot(c, vec3(0.3, 0.59, 0.11));
-        c += hp * uSharpen / (1.0 + lc * 2.0);
+        // a reduced scale gives back some of the detail it lost
+        c += hp * (uSharpen + 0.35 * (1.0 - uScale)) / (1.0 + lc * 2.0);
         c = max(c, 0.0);
 
         c += texture2D(tVol, vUv).rgb * uVolK;
@@ -236,6 +260,7 @@ export class Post {
       {
         tScene: { value: null }, tBloom: { value: null }, tShaft: { value: null }, tVol: { value: null }, tExp: { value: null },
         uSrcTexel: { value: new THREE.Vector2() },
+        uScale: { value: 1 },
         uExposure: { value: 1 }, uBloom: { value: 0.04 }, uShaft: { value: 0 }, uTime: { value: 0 },
         uSharpen: { value: 0.18 }, uVignette: { value: 0.42 }, uSat: { value: 1.0 }, uFade: { value: 0 }, uChroma: { value: 0.0012 },
         uVolK: { value: 1 }, uAdapt: { value: 1 }, uContrast: { value: 1.12 },
@@ -316,6 +341,7 @@ export class Post {
     u.tVol.value = volTex;
     u.tExp.value = this.expB.texture;
     u.uSrcTexel.value.set(1 / this.srcW, 1 / this.srcH);
+    u.uScale.value = Math.min(1, this.srcW / this.renderer.getDrawingBufferSize(this._db).x);
     this.fs.render(this.renderer, this.composite, null);
   }
 }
