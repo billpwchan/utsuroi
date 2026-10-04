@@ -60,7 +60,7 @@ Sound is optional and entirely synthesised, with nothing downloaded:
 - the kettle's *wind in the pines* and the nightingale floor under your feet;
 - a temple bell far off at sunrise and sunset.
 
-| Key | |
+| Key | Action |
 |---|---|
 | Scroll, <kbd>↓</kbd> <kbd>→</kbd> <kbd>Space</kbd> | next stop |
 | <kbd>↑</kbd> <kbd>←</kbd> | previous stop |
@@ -143,7 +143,7 @@ You need Node 20.19+ or 22.12+ and a desktop browser with WebGL2. It is develope
 
 URL parameters help when working on one place:
 
-| | |
+| Parameter | Effect |
 |---|---|
 | `?stop=6` | open at a stop (0–13) |
 | `?season=2` | 0 spring, 1 summer, 2 autumn, 3 winter |
@@ -155,7 +155,7 @@ URL parameters help when working on one place:
 
 You don't need any of this to run or change the site. The scripts are here so the pipeline can be read, rerun or adapted. Some assets went through one-off steps that are not automated here: splitting a tree's bark from its leaves, the andon, a few textures and the paintings.
 
-| | |
+| Script | What it does |
 |---|---|
 | `scripts/fetch-assets.mjs` | Poly Haven and ambientCG textures and rocks → KTX2 (needs [`basisu`](https://github.com/BinomialLLC/basis_universal)) |
 | `scripts/sketchfab.sh`, `scripts/models.mjs` | Sketchfab downloads → web glTF: welded, simplified, meshopt, KTX2 |

@@ -60,7 +60,7 @@
 - 铁瓶的“松风”，脚下吱呀如鸟鸣的莺张地板；
 - 日出和日落时远处寺院的钟声。
 
-| 按键 | |
+| 按键 | 作用 |
 |---|---|
 | 滚动、<kbd>↓</kbd> <kbd>→</kbd> <kbd>Space</kbd> | 下一站 |
 | <kbd>↑</kbd> <kbd>←</kbd> | 上一站 |
@@ -143,7 +143,7 @@ npm run dev          # http://127.0.0.1:5195
 
 调试某一处时可以用这些 URL 参数：
 
-| | |
+| 参数 | 作用 |
 |---|---|
 | `?stop=6` | 直接打开某一站（0–13） |
 | `?season=2` | 0 春，1 夏，2 秋，3 冬 |
@@ -155,7 +155,7 @@ npm run dev          # http://127.0.0.1:5195
 
 运行或修改网站都不需要这些。脚本放在这里，方便阅读、重跑或改作他用。有些资源经过一次性的处理，没有在这里自动化：例如把树的枝干和叶子拆开、行灯、少数纹理和书画。
 
-| | |
+| 脚本 | 用途 |
 |---|---|
 | `scripts/fetch-assets.mjs` | Poly Haven 与 ambientCG 的纹理和岩石 → KTX2（需要 [`basisu`](https://github.com/BinomialLLC/basis_universal)） |
 | `scripts/sketchfab.sh`、`scripts/models.mjs` | Sketchfab 下载 → web glTF：焊接、简化、meshopt、KTX2 |
