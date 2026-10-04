@@ -346,9 +346,11 @@ export function createStructures(M, lamps) {
 // the square lantern is under the Sketchfab Standard licence, which keeps it out of the public repository; a clone
 // without it stands the Miyajima scan in its place
 const STAND_IN = { kaku: 'toro' };
+const PRESENT = { kaku: __KAKU__ };
 
 export async function placeScans(st) {
-  st.missing = [];
+  st.missing = [...new Set(st.scans.map((s) => s.model).filter((n) => PRESENT[n] === false))];
+  for (const s of st.scans) if (st.missing.includes(s.model)) s.model = STAND_IN[s.model];
   const names = [...new Set(st.scans.map((s) => s.model))];
   const models = Object.fromEntries(await Promise.all(names.map(async (n) => {
     try {
