@@ -1,10 +1,11 @@
 // The interface. A loader that draws the house as an architect's plan while the world loads; a title sheet; then
 // the chrome of the walk: chapter cards that come in as you come to rest, a day ruler on the right that is the
 // sun's path from five in the morning to nine at night, the four seasons, sound, a photo mode that also prints a
-// postcard, from above, the rooms as places to go back to, and a colophon naming whose work the garden is made of.
+// postcard, from above, the rooms as places to go back to, and a colophon naming whose work the garden is made of
+// (with the way to the source beside it).
 import './ui.css';
 import { buildPlan } from './plan.js';
-import { TITLE, COPY, SEASONS, PLACES, CREDITS, COLOPHON } from './copy.js';
+import { TITLE, COPY, SEASONS, PLACES, CREDITS, COLOPHON, REPO } from './copy.js';
 
 const $ = (tag, cls, html) => {
   const e = document.createElement(tag);
@@ -47,7 +48,7 @@ export class UI {
     const tb = $('div', 'titleblock');
     tb.innerHTML = `
       <div class="tb-row tb-title"><span class="jp v">${TITLE.jp}</span><div class="tb-names"><b>${TITLE.en}</b><i>${TITLE.sub}</i><em>${TITLE.subJa}</em></div></div>
-      <div class="tb-row tb-meta"><span>京都 · 北山</span><span>1 : 250</span><button class="colo-open" type="button">Credits</button><span class="pct">000</span></div>`;
+      <div class="tb-row tb-meta"><span>京都 · 北山</span><span>1 : 250</span><button class="colo-open" type="button">Credits</button><a class="colo-open" href="${REPO}" target="_blank" rel="noopener">GitHub</a><span class="pct">000</span></div>`;
     L.appendChild(tb);
     tb.querySelector('.colo-open').addEventListener('click', () => this.setColophon(true));
     this.pct = tb.querySelector('.pct');
@@ -137,7 +138,8 @@ export class UI {
     c.innerHTML = `
       <div class="colo-sheet">
         <header class="colo-head"><span class="jp v">奥付</span>
-          <div class="colo-title"><h2 id="colo-h">Colophon</h2><p>${COLOPHON.en}</p><p class="ja">${COLOPHON.ja}</p></div>
+          <div class="colo-title"><h2 id="colo-h">Colophon</h2><p>${COLOPHON.en}</p><p class="ja">${COLOPHON.ja}</p>
+            <a class="colo-link colo-src" href="${REPO}" ${ext}><span class="jp">ソース</span>github.com/billpwchan/utsuroi</a></div>
           <button class="colo-close" type="button">Close · Esc</button></header>
         <ul class="colo-list">${rows}</ul>
       </div>`;
@@ -266,10 +268,17 @@ export class UI {
     this.veil = $('div', 'veil');
     R.appendChild(this.veil);
 
+    // the corner: the source, and whose work the garden is made of
+    const corner = $('div', 'corner');
+    const src = $('a', 'colo-link', '<span class="jp">ソース</span>GitHub');
+    src.href = REPO;
+    src.target = '_blank';
+    src.rel = 'noopener';
     const colo = $('button', 'colo-link', '<span class="jp">奥付</span>Credits');
     colo.type = 'button';
     colo.addEventListener('click', () => this.setColophon(true));
-    R.appendChild(colo);
+    corner.append(src, colo);
+    R.appendChild(corner);
 
     this.bindInput();
     this.setSeason(app.env.season, true);

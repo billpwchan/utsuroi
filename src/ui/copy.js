@@ -83,6 +83,7 @@ const BY = ['CC BY 4.0', 'https://creativecommons.org/licenses/by/4.0/'];
 const NCSA = ['CC BY-NC-SA 4.0', 'https://creativecommons.org/licenses/by-nc-sa/4.0/'];
 const STD = ['Sketchfab Standard', 'https://sketchfab.com/licenses'];
 const CC0 = ['CC0', 'https://creativecommons.org/publicdomain/zero/1.0/'];
+export const REPO = 'https://github.com/billpwchan/utsuroi';
 export const COLOPHON = {
   en: 'The garden is made of other people’s work: stones, trees and things scanned where they stand, wood modelled branch by branch, surfaces photographed. Each is used under its licence, with thanks.',
   ja: 'この庭は、ほかの人々の仕事でできている。石も木も道具も、その場で測られ、写されたもの。感謝を込めて。',

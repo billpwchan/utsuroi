@@ -19,7 +19,7 @@ html.clean .ut { display: none; }
 html::-webkit-scrollbar { display: none; }
 .v { writing-mode: vertical-rl; text-orientation: upright; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-button:focus-visible { outline: 1px solid var(--shu); outline-offset: 4px; }
+button:focus-visible, a:focus-visible { outline: 1px solid var(--shu); outline-offset: 4px; }
 
 /* ------------------------------------------------------------------ loader: the sheet */
 #load {
@@ -234,16 +234,17 @@ button:focus-visible { outline: 1px solid var(--shu); outline-offset: 4px; }
 
 /* ------------------------------------------------------------------ colophon: set like a schedule on the drawing */
 html.reading, html.reading body { overflow: hidden; }
-.tb-meta .colo-open { font: inherit; letter-spacing: inherit; color: var(--paper2); text-transform: uppercase; transition: color 0.4s var(--ease); }
+.tb-meta .colo-open { font: inherit; letter-spacing: inherit; color: var(--paper2); text-transform: uppercase; text-decoration: none; transition: color 0.4s var(--ease); }
 .tb-meta .colo-open:hover { color: var(--paper); }
+.corner { position: absolute; right: 30px; bottom: 24px; display: flex; align-items: baseline; gap: 28px; transition: opacity 1.2s var(--ease); }
 .colo-link {
-  position: absolute; right: 30px; bottom: 24px; display: flex; align-items: baseline; gap: 9px;
+  display: flex; align-items: baseline; gap: 9px; text-decoration: none;
   font: 400 9.5px var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--paper3);
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45); transition: color 0.4s var(--ease), opacity 1.2s var(--ease);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.45); transition: color 0.4s var(--ease);
 }
-.colo-link .jp { font: 400 12px var(--jp); letter-spacing: 0.14em; text-transform: none; }
+.colo-link .jp { flex: none; font: 400 12px var(--jp); letter-spacing: 0.14em; text-transform: none; }
 .colo-link:hover { color: var(--paper); }
-.ut.idle .colo-link { opacity: 0.2; }
+.ut.idle .corner { opacity: 0.2; }
 .colophon {
   position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 7vh 5vw;
   background: rgba(12, 10, 8, 0.8); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); color: var(--paper);
@@ -260,6 +261,7 @@ html.reading, html.reading body { overflow: hidden; }
 .colo-title h2 { margin: 0; font: italic 500 36px/1 var(--en); letter-spacing: 0.005em; }
 .colo-title p { margin: 12px 0 0; max-width: 52ch; font: 500 17px/1.5 var(--en); color: var(--paper2); }
 .colo-title .ja { margin-top: 8px; font: 400 12px/1.9 var(--jp); letter-spacing: 0.06em; color: var(--paper3); }
+.colo-title .colo-src { display: inline-flex; flex-wrap: wrap; row-gap: 4px; margin-top: 14px; text-transform: none; letter-spacing: 0.12em; text-shadow: none; }
 .colo-close { margin-left: auto; flex: none; padding: 6px 0 6px 14px; font: 400 9.5px var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--paper2); transition: color 0.4s var(--ease); }
 .colo-close:hover { color: var(--paper); }
 .colo-list { list-style: none; margin: 0; padding: 0 0 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; }
@@ -309,7 +311,7 @@ html.reading, html.reading body { overflow: hidden; }
   .place { padding: 5px 8px 6px; }
   .place .en { display: none; }
   .toast { right: 14px; top: 56px; }
-  .colo-link { right: auto; left: 18px; top: 50px; bottom: auto; }
+  .corner { right: auto; left: 18px; top: 50px; bottom: auto; gap: 22px; }
   .colophon { padding: 0; align-items: stretch; }
   /* the whole sheet scrolls on a phone, so the heading gives the list its room */
   .colo-sheet { border-top: 0; padding: 18px 20px 0; overflow-y: auto; overscroll-behavior: contain; }
