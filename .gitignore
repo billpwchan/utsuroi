@@ -1,0 +1,9 @@
+node_modules
+dist
+.cache
+.DS_Store
+# under the Sketchfab Standard licence, which does not allow redistribution; see CREDITS.md
+public/assets/glb/kaku.glb
+# this machine's deploy target
+deploy/gateway.caddy
+deploy/local.sh

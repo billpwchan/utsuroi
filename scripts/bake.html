@@ -1,0 +1,54 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:transparent}</style>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+const P = new URLSearchParams(location.search);
+const px = Number(P.get('px') || 2048);
+const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+r.setPixelRatio(1); r.setSize(px, px); r.setClearColor(0x000000, 0);
+r.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene();
+const m0 = P.get('m');
+const g = await new GLTFLoader().loadAsync(`/.cache/src-assets/sf/${m0}/${P.get('f') || 'model.glb'}`);
+const o = g.scene;
+o.traverse((m) => { if (m.isMesh) { const mt = m.material; m.material = new THREE.MeshBasicMaterial({ map: mt.map, side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }); } });
+scene.add(o);
+// the scans carry a colour chart as a separate 24-vertex mesh
+const chart = [];
+o.traverse((m) => { if (m.isMesh && m.geometry.attributes.position.count <= 24) chart.push(m); });
+chart.forEach((m) => m.removeFromParent());
+o.updateMatrixWorld(true);
+const dir = P.get('dir') || 'top';
+// look straight down -y (top) or along -z (front)
+const box = new THREE.Box3().setFromObject(o);
+const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
+const half = (dir === 'top' ? Math.max(s.x, s.z) : dir === 'side' ? Math.max(s.z, s.y) : Math.max(s.x, s.y)) / 2 * 1.02;
+const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.001, 1000);
+if (dir.startsWith('el')) {
+  // el<elevation>az<azimuth> in degrees, framed on the bounding sphere so every azimuth has the same scale
+  const [, el, az] = dir.match(/el(\d+)az(\d+)/).map(Number);
+  const rad = s.length() / 2 * 1.02, e = el * Math.PI / 180, a = az * Math.PI / 180;
+  Object.assign(cam, { left: -rad, right: rad, top: rad, bottom: -rad });
+  cam.updateProjectionMatrix();
+  cam.position.set(c.x + Math.cos(e) * Math.sin(a) * (rad + 10), c.y + Math.sin(e) * (rad + 10), c.z + Math.cos(e) * Math.cos(a) * (rad + 10));
+  if (el > 85) cam.up.set(Math.sin(a), 0, Math.cos(a)).negate();
+}
+else if (dir === 'top') { cam.position.set(c.x, box.max.y + 10, c.z); cam.up.set(0, 0, -1); }
+else if (dir === 'side') { cam.position.set(box.min.x - 10, c.y, c.z); }
+else { cam.position.set(c.x, c.y, box.max.z + 10); }
+cam.lookAt(c);
+r.render(scene, cam);
+const png = r.domElement.toDataURL('image/png');
+// second pass, same framing: view-space normals, back faces flipped toward the camera (thin leaves are seen from
+// both sides), written as n * 0.5 + 0.5
+const nm = new THREE.ShaderMaterial({
+  side: THREE.DoubleSide,
+  vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: 'varying vec3 vN; void main(){ vec3 n = normalize(vN) * (gl_FrontFacing ? 1.0 : -1.0); gl_FragColor = vec4(n * 0.5 + 0.5, 1.0); }',
+});
+o.traverse((m) => { if (m.isMesh) m.material = nm; });
+r.outputColorSpace = THREE.LinearSRGBColorSpace;
+r.render(scene, cam);
+window.__bake = { png, npng: r.domElement.toDataURL('image/png'), size: s.toArray(), half: cam.top };
+</script>

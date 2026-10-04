@@ -1,0 +1,5 @@
+# Copy to gateway.caddy with your hostname. Utsuroi owns only this hostname and this fragment.
+utsuroi.example.com {
+	encode zstd gzip
+	reverse_proxy utsuroi:8080
+}

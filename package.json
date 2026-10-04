@@ -1,0 +1,50 @@
+{
+  "name": "utsuroi",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A Kyoto house and garden walked from first light to last, rendered in real time in the browser with three.js.",
+  "license": "MIT",
+  "author": "Bill Chan",
+  "homepage": "https://billpwchan.github.io/utsuroi/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/billpwchan/utsuroi.git"
+  },
+  "keywords": [
+    "three.js",
+    "webgl",
+    "webgl2",
+    "real-time-rendering",
+    "lightmap",
+    "japanese-garden",
+    "kyoto",
+    "creative-coding",
+    "scrollytelling",
+    "photogrammetry"
+  ],
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5196",
+    "assets": "node scripts/fetch-assets.mjs",
+    "models": "node scripts/models.mjs",
+    "shot": "node scripts/shot.mjs",
+    "perf": "node scripts/perf.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "meshoptimizer": "^1.3.0",
+    "playwright-core": "^1.63.0",
+    "sharp": "^0.35.5",
+    "vite": "^8.3.2"
+  }
+}

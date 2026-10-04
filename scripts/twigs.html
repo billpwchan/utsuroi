@@ -1,0 +1,308 @@
+<!doctype html><meta charset="utf-8"><style>html,body{margin:0;background:#000}</style>
+<script type="module">
+// Foliage atlases from the scan renders of scripts/bake.mjs (colour + view-space normals): each species gets a
+// 2x2 atlas (or grid x grid) of different branchlets, one per card, built from the scanned sprays at their true size. Leaf species
+// are written as neutral luminance (the leaf material tints them per season); blossoms keep their colour.
+// Normals are written in the card's tangent space: x along u, y along v (image rows run down v).
+import { rng } from '/src/lib/math.js';
+
+const P = new URLSearchParams(location.search);
+const only = P.get('only');
+
+// half: the bake's half-extent (model units); unit: metres per model unit, set from a known leaf or flower size
+const SCANS = {
+  twig_plum: { half: 0.151, unit: 1, views: ['el90az0', 'el75az0', 'el75az180', 'el60az90', 'el60az270', 'el50az45'], keep: 'largest' },
+  maple_twig: { half: 11.451, unit: 0.023, views: ['el90az0', 'el70az0', 'el70az120', 'el70az240', 'el55az60', 'el55az300'], keep: 0.25 },
+  // the tuft's male flower is tan against the needles; it is kept but toned down to a needle's grey
+  pine_tuft2: { half: 0.188, unit: 1, views: ['el90az0', 'el70az0', 'el70az90', 'el70az180', 'el70az270', 'el45az0', 'el45az180'], keep: 'largest', dullWarm: true },
+  // sugi in spring: its male cones are tan against the green, toned down the same way; the cone cluster beside it
+  // is a separate island and drops out
+  sugi_sprig: { half: 0.124, unit: 1, views: ['el90az0', 'el70az0', 'el70az90', 'el70az180', 'el70az270', 'el45az0', 'el45az180'], keep: 'largest', dullWarm: true },
+  sakura_hd: { half: 7.985, unit: 0.022, views: ['el90az0', 'el60az0', 'el60az120', 'el60az240', 'el45az60', 'el45az300'], keep: 0.2 },
+  sakura_twig: { half: 6.057, unit: 0.024, views: ['el90az0', 'el60az0', 'el60az120', 'el60az240'], keep: 0.2 },
+  // satsuki: the leaf layer drops the flowers (whatever is redder than it is green); masaki rosettes, shrunk to an
+  // azalea's leaf, thicken it
+  satsuki: { half: 8.882, unit: 0.021, views: ['el90az0', 'el70az0', 'el70az90', 'el70az180', 'el70az270', 'el50az45', 'el50az225'], keep: 0.06, dropFlowers: true },
+  satsuki_bloom: { src: 'satsuki', half: 8.882, unit: 0.021, views: ['el90az0', 'el70az0', 'el70az90', 'el70az180', 'el70az270', 'el50az45', 'el50az225'], keep: 0.25 },
+  // its fruit go the same way as the satsuki's flowers
+  masaki: { half: 0.122, unit: 1, views: ['el90az0', 'el70az0', 'el70az120', 'el70az240'], keep: 0.15, dropFlowers: true },
+  // kumazasa: one shoot's fan of leaves, their winter margins withered to cream; the colour chart drops out
+  sasa: { half: 0.247, unit: 1, views: ['el90az0', 'el75az0', 'el75az180', 'el60az90', 'el60az270'], keep: 'largest' },
+};
+
+// card: nominal card width in metres (the tree builders' cards); grey: luminance only
+const SPECIES = {
+  leaves: { scans: ['twig_plum'], card: 0.62, grey: true, layout: 'spray', seed: 11 },
+  maple: { scans: ['maple_twig'], card: 0.62, grey: true, layout: 'spray', seed: 22 },
+  pine: { scans: ['pine_tuft2'], card: 0.38, grey: true, layout: 'tuft', seed: 33 },
+  blossom: { scans: ['sakura_hd', 'sakura_twig'], card: 0.62, grey: false, layout: 'bloom', seed: 44 },
+  // the weeping cherry's hanging shoots: one flower bunch to a card, at its own size, sixteen to the atlas
+  umbel: { scans: ['sakura_hd', 'sakura_twig'], card: 0.22, grey: false, layout: 'umbel', seed: 88, grid: 4 },
+  // a sugi holds its green in dense rounded clumps: sprigs packed into a ball
+  sugi: { scans: ['sugi_sprig'], card: 0.5, grey: true, layout: 'mat', seed: 77, bloomShare: 0 },
+  // karikomi: clipped satsuki seen as a dense mat of leaf rosettes; small cards, so a smaller atlas
+  karikomi: { scans: ['masaki'], card: 0.18, grey: true, layout: 'mat', seed: 55, size: 1024, bloomShare: 0 },
+  // in flower: green rosettes underneath, the satsuki sprays laid over them
+  karikomiBloom: { scans: ['masaki', 'satsuki_bloom'], card: 0.18, grey: false, layout: 'mat', seed: 66, size: 1024, bloomShare: 0.16 },
+  // kumazasa twice over, laid out alike (same seed): grey for the leaf material's seasonal green, and in colour for
+  // where the margins are, which wither to cream in autumn and winter
+  // one shoot to a card: its fan of leaves is what the eye picks out in a drift
+  sasa: { scans: ['sasa'], card: 0.6, grey: true, layout: 'shoot', seed: 99, size: 1024 },
+  sasaC: { scans: ['sasa'], card: 0.6, grey: false, layout: 'shoot', seed: 99, size: 1024 },
+};
+
+const img = (src) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src; });
+const pixels = (im) => { const c = new OffscreenCanvas(im.width, im.height); const g = c.getContext('2d'); g.drawImage(im, 0, 0); return g.getImageData(0, 0, im.width, im.height); };
+
+// connected islands of the alpha mask (8-neighbour, so a pine fascicle's needles stay one piece)
+function islands(a, W, H) {
+  const lab = new Int32Array(W * H).fill(-1), q = new Int32Array(W * H), out = [];
+  for (let s = 0; s < W * H; s++) {
+    if (a[s] < 128 || lab[s] >= 0) continue;
+    const id = out.length;
+    let h = 0, t = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
+    q[t++] = s; lab[s] = id;
+    while (h < t) {
+      const p = q[h++], x = p % W, y = (p / W) | 0;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        const n = yy * W + xx;
+        if (a[n] < 128 || lab[n] >= 0) continue;
+        lab[n] = id; q[t++] = n;
+      }
+    }
+    out.push({ id, area: t, x0, y0, x1, y1 });
+  }
+  return { lab, list: out };
+}
+
+// one sprite per kept island: colour and tangent-space normal canvases cropped to it, its principal axis, its scale
+async function sprites(name, grey) {
+  const sc = SCANS[name];
+  const out = [];
+  for (const v of sc.views) {
+    const file = sc.src || name;
+    const [ci, ni] = await Promise.all([img(`/.cache/twig/v/${file}_${v}.png`), img(`/.cache/twig/v/${file}_${v}_n.png`)]);
+    const C = pixels(ci), N = pixels(ni), W = C.width, H = C.height;
+    const alpha = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) alpha[i] = sc.dropFlowers && C.data[i * 4] > C.data[i * 4 + 1] * 1.08 ? 0 : C.data[i * 4 + 3];
+    const { lab, list } = islands(alpha, W, H);
+    list.sort((p, q) => q.area - p.area);
+    const keep = sc.keep === 'largest' ? list.slice(0, 1) : list.filter((o) => o.area >= list[0].area * sc.keep);
+    const mpp = (2 * sc.half * sc.unit) / W;
+    for (const o of keep) {
+      const pad = 3, x0 = Math.max(0, o.x0 - pad), y0 = Math.max(0, o.y0 - pad), x1 = Math.min(W - 1, o.x1 + pad), y1 = Math.min(H - 1, o.y1 + pad);
+      const w = x1 - x0 + 1, h = y1 - y0 + 1;
+      const c = new ImageData(w, h), n = new ImageData(w, h);
+      let sum = 0, cnt = 0, mx = 0, my = 0, mxx = 0, myy = 0, mxy = 0, wsum = 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const s = (y + y0) * W + (x + x0), d = (y * w + x) * 4;
+        // the island and its antialiased rim (rim pixels belong to whichever island they touch)
+        let mine = lab[s] === o.id;
+        if (!mine && alpha[s] > 0 && lab[s] < 0) {
+          for (let k = 0; k < 4 && !mine; k++) { const nb = s + [-1, 1, -W, W][k]; mine = nb >= 0 && nb < W * H && lab[nb] === o.id; }
+        }
+        if (!mine) continue;
+        if (!alpha[s]) continue;
+        const r = C.data[s * 4], g = C.data[s * 4 + 1], b = C.data[s * 4 + 2], a = alpha[s];
+        if (grey) { let l = 0.2126 * r + 0.7152 * g + 0.0722 * b; if (sc.dullWarm && r > g * 1.05) l *= 0.5; c.data[d] = c.data[d + 1] = c.data[d + 2] = l; }
+        else { c.data[d] = r; c.data[d + 1] = g; c.data[d + 2] = b; }
+        c.data[d + 3] = a;
+        // view space (x right, y up) to image rows (y down)
+        n.data[d] = N.data[s * 4]; n.data[d + 1] = 255 - N.data[s * 4 + 1]; n.data[d + 2] = N.data[s * 4 + 2]; n.data[d + 3] = a;
+        if (a > 200) {
+          sum += grey ? c.data[d] : 0.2126 * r + 0.7152 * g + 0.0722 * b; cnt++;
+          mx += x; my += y; mxx += x * x; myy += y * y; mxy += x * y; wsum++;
+        }
+      }
+      if (grey && cnt) {
+        // every spray to the same mean grey, its own contrast kept
+        const k = 158 / (sum / cnt);
+        for (let i = 0; i < c.data.length; i += 4) { const l = Math.min(255, c.data[i] * k); c.data[i] = c.data[i + 1] = c.data[i + 2] = l; }
+      }
+      mx /= wsum; my /= wsum;
+      const cxx = mxx / wsum - mx * mx, cyy = myy / wsum - my * my, cxy = mxy / wsum - mx * my;
+      const axis = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
+      const cc = new OffscreenCanvas(w, h); cc.getContext('2d').putImageData(c, 0, 0);
+      out.push({ name, view: v, w, h, cx: mx, cy: my, axis, mpp, col: cc, nrm: n, cover: wsum });
+    }
+  }
+  return out;
+}
+
+// the sprite's normals rotated with it (and mirrored), drawn into a canvas the same size as its colour
+function rotatedNormals(sp, ang, flip) {
+  const d = new ImageData(sp.w, sp.h), s = sp.nrm.data, o = d.data;
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+  for (let i = 0; i < s.length; i += 4) {
+    if (!s[i + 3]) continue;
+    let x = s[i] / 127.5 - 1, y = s[i + 1] / 127.5 - 1;
+    if (flip) x = -x;
+    const rx = x * ca - y * sa, ry = x * sa + y * ca;
+    o[i] = (rx + 1) * 127.5; o[i + 1] = (ry + 1) * 127.5; o[i + 2] = s[i + 2]; o[i + 3] = s[i + 3];
+  }
+  const c = new OffscreenCanvas(sp.w, sp.h); c.getContext('2d').putImageData(d, 0, 0);
+  return c;
+}
+
+function place(gc, gn, sp, x, y, ang, scale, flip, shade, tint) {
+  const k = scale;
+  const draw = (g, src) => {
+    g.save(); g.translate(x, y); g.rotate(ang); g.scale(flip ? -k : k, k);
+    g.drawImage(src, -sp.cx, -sp.cy);
+    g.restore();
+  };
+  // its shadow on what is already there
+  gc.save(); gc.globalCompositeOperation = 'source-atop'; gc.filter = `blur(${Math.max(2, 9 * k)}px)`;
+  gc.globalAlpha = 0.42;
+  const sh = new OffscreenCanvas(sp.w, sp.h), sg = sh.getContext('2d');
+  sg.drawImage(sp.col, 0, 0); sg.globalCompositeOperation = 'source-in'; sg.fillStyle = '#000'; sg.fillRect(0, 0, sp.w, sp.h);
+  gc.translate(7, 11); draw(gc, sh); gc.restore();
+  // the sprite, darker the deeper it sits
+  const tc = new OffscreenCanvas(sp.w, sp.h), tg = tc.getContext('2d');
+  tg.drawImage(sp.col, 0, 0);
+  tg.globalCompositeOperation = 'multiply';
+  tg.fillStyle = `rgb(${tint.map((v) => Math.round(v * shade * 255)).join(',')})`; tg.fillRect(0, 0, sp.w, sp.h);
+  tg.globalCompositeOperation = 'destination-in'; tg.drawImage(sp.col, 0, 0);
+  draw(gc, tc);
+  draw(gn, rotatedNormals(sp, ang, flip));
+}
+
+// a tapered twig from p along a gently bending path; returns its points
+function twig(g, gn, R, x, y, ang, len, w0, w1, col, steps = 10) {
+  const pts = [[x, y]];
+  for (let i = 0; i < steps; i++) { ang += R.range(-0.12, 0.12); x += Math.cos(ang) * len / steps; y += Math.sin(ang) * len / steps; pts.push([x, y, ang]); }
+  for (const [gg, c] of [[g, col], [gn, 'rgb(128,128,255)']]) {
+    gg.strokeStyle = c; gg.lineCap = 'round';
+    for (let i = 1; i < pts.length; i++) {
+      gg.lineWidth = w0 + (w1 - w0) * (i / pts.length);
+      gg.beginPath(); gg.moveTo(pts[i - 1][0], pts[i - 1][1]); gg.lineTo(pts[i][0], pts[i][1]); gg.stroke();
+    }
+  }
+  return pts;
+}
+
+function quadrant(sp, set, qi) {
+  const Q = sp.size / (sp.grid || 2);
+  const R = rng(sp.seed * 97 + qi * 13);
+  const pxm = Q / sp.card;
+  const cc = new OffscreenCanvas(Q, Q), nc = new OffscreenCanvas(Q, Q);
+  const g = cc.getContext('2d'), gn = nc.getContext('2d');
+  g.imageSmoothingQuality = gn.imageSmoothingQuality = 'high';
+  const bark = sp.grey ? 'rgb(70,70,70)' : 'rgb(58,40,34)';
+  const pick = () => set[(R.next() * set.length) | 0];
+  const real = (s) => s.mpp * pxm * R.range(0.88, 1.12);
+  const tintOf = () => sp.grey ? [1, 1, 1] : R.pick([[1, 1, 1], [1, 0.97, 0.98], [1, 0.93, 0.95], [0.98, 0.95, 0.97]]);
+  if (sp.layout === 'spray') {
+    // branchlets radiating from the card's middle, a spray at the end of each and another part way along
+    const n = R.int(4, 6), a0 = R.next() * 6.283;
+    const ends = [];
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i / n) * 6.283 + R.range(-0.3, 0.3);
+      const pts = twig(g, gn, R, Q / 2 + R.range(-30, 30), Q / 2 + R.range(-30, 30), a, R.range(0.09, 0.16) * pxm, 0.008 * pxm, 0.003 * pxm, bark);
+      ends.push(pts[pts.length - 1], pts[(pts.length * R.range(0.45, 0.7)) | 0]);
+    }
+    ends.sort(() => R.next() - 0.5);
+    ends.forEach(([x, y, a], i) => {
+      const s = pick();
+      place(g, gn, s, x, y, (a ?? 0) - s.axis + R.range(-0.5, 0.5), real(s), R.next() < 0.5, 0.72 + 0.28 * (i / ends.length), [1, 1, 1]);
+    });
+  } else if (sp.layout === 'tuft') {
+    // a pine shoot seen from above: a forked twig with fascicle tufts along it, the side shoot's deeper and
+    // smaller, the leader's tip tuft full and on top
+    const a = R.next() * 6.283, side = R.next() < 0.5 ? 1 : -1;
+    const pts = twig(g, gn, R, Q / 2 - Math.cos(a) * 0.11 * pxm, Q / 2 - Math.sin(a) * 0.11 * pxm, a, 0.12 * pxm, 0.011 * pxm, 0.007 * pxm, bark, 8);
+    const br = twig(g, gn, R, pts[3][0], pts[3][1], a + side * R.range(0.6, 0.9), 0.08 * pxm, 0.008 * pxm, 0.005 * pxm, bark, 6);
+    const spots = [[br[3], 0.72], [br[6], 0.8], [pts[2], 0.78], [pts[5], 0.88], [pts[8], 1]];
+    spots.forEach(([[x, y, aa], k], i) => {
+      const s = i === 4 ? set.find((t) => t.view === 'el90az0') || pick() : pick();
+      place(g, gn, s, x, y, (aa ?? a) + R.range(-0.6, 0.6), real(s) * k, R.next() < 0.5, 0.68 + 0.08 * i, [1, 1, 1]);
+    });
+  } else if (sp.layout === 'mat') {
+    // a clipped surface: rosettes packed edge to edge over the whole card, every one turned a different way;
+    // sprites of the first listed scan go underneath
+    // (kept inside a third of the card, so its outline is the leaves' own and never the card's circle)
+    const n = Math.round(Math.PI * 0.42 * 0.42 * sp.card * sp.card / 0.0009);
+    const of = (name) => set.filter((t) => t.name === name);
+    const picks = Array.from({ length: n }, (_, i) => R.pick(of(i < n * (1 - sp.bloomShare) ? sp.scans[0] : sp.scans[sp.scans.length - 1])));
+    for (let i = 0; i < n; i++) {
+      const s = picks[i];
+      // flowers keep to the middle, the leaves around them hold the edge
+      const rr = Math.sqrt(R.next()) * (s.name === sp.scans[0] ? 0.33 : 0.2) * Q, a = R.next() * 6.283;
+      // masaki leaves are twice an azalea's: shrink them to sit among the satsuki
+      const k = real(s) * (s.name === 'masaki' ? 0.5 : 1);
+      place(g, gn, s, Q / 2 + Math.cos(a) * rr, Q / 2 + Math.sin(a) * rr, R.next() * 6.283, k, R.next() < 0.5, 0.62 + 0.38 * (i / n), sp.grey ? [1, 1, 1] : tintOf());
+    }
+  } else if (sp.layout === 'shoot') {
+    // one shoot at the card's middle, grown to a kumazasa's size (the scan's is a young one); now and then a
+    // smaller one in its shade behind it
+    if (R.next() < 0.4) {
+      const s2 = set[(qi * 3 + 1) % set.length];
+      place(g, gn, s2, Q / 2 + R.range(-0.06, 0.06) * pxm, Q / 2 + R.range(-0.06, 0.06) * pxm, R.next() * 6.283, real(s2) * 1.1, R.next() < 0.5, 0.7, [1, 1, 1]);
+    }
+    const s = set[qi % set.length];
+    place(g, gn, s, Q / 2, Q / 2, R.next() * 6.283, real(s) * 1.5, R.next() < 0.5, 1, [1, 1, 1]);
+  } else if (sp.layout === 'umbel') {
+    // one bunch as it hangs off a shoot, now and then a second half hidden behind it
+    if (R.next() < 0.4) {
+      const s2 = pick();
+      place(g, gn, s2, Q / 2 + R.range(-0.03, 0.03) * pxm, Q / 2 + R.range(-0.03, 0.03) * pxm, R.next() * 6.283, real(s2) * 0.85, R.next() < 0.5, 0.74, tintOf());
+    }
+    const s = set[(qi * 7 + 3) % set.length];
+    place(g, gn, s, Q / 2, Q / 2, R.next() * 6.283, real(s), R.next() < 0.5, 1, tintOf());
+  } else {
+    // full bloom: twigs carrying clusters close along their length and crowded at the tips
+    const n = R.int(5, 7), a0 = R.next() * 6.283;
+    const spots = [];
+    for (let i = 0; i < n; i++) {
+      const a = a0 + (i / n) * 6.283 + R.range(-0.35, 0.35);
+      const pts = twig(g, gn, R, Q / 2 + R.range(-40, 40), Q / 2 + R.range(-40, 40), a, R.range(0.1, 0.17) * pxm, 0.01 * pxm, 0.004 * pxm, bark);
+      for (const t of [0.35, 0.6, 0.85, 1.0]) if (R.next() < 0.85) spots.push(pts[Math.min(pts.length - 1, (pts.length * t) | 0)]);
+    }
+    spots.sort(() => R.next() - 0.5);
+    spots.forEach(([x, y], i) => {
+      const s = pick();
+      place(g, gn, s, x + R.range(-12, 12), y + R.range(-12, 12), R.next() * 6.283, real(s), R.next() < 0.5, 0.7 + 0.3 * (i / spots.length), tintOf());
+    });
+  }
+  return [cc, nc];
+}
+
+async function species(key) {
+  const sp = { size: 2048, ...SPECIES[key], key };
+  const G = sp.grid || 2, A = sp.size, Q = A / G;
+  const set = (await Promise.all(sp.scans.map((s) => sprites(s, sp.grey)))).flat();
+  const C = new OffscreenCanvas(A, A), N = new OffscreenCanvas(A, A);
+  const gc = C.getContext('2d'), gn = N.getContext('2d');
+  for (let qi = 0; qi < G * G; qi++) {
+    const [cc, nc] = quadrant(sp, set, qi);
+    gc.drawImage(cc, (qi % G) * Q, Math.floor(qi / G) * Q);
+    gn.drawImage(nc, (qi % G) * Q, Math.floor(qi / G) * Q);
+  }
+  // a soft round edge per card so none shows a straight cut; empty texels take the mean colour so mips keep the
+  // silhouettes their own tone, and empty normals point straight out of the card
+  const c = gc.getImageData(0, 0, A, A), n = gn.getImageData(0, 0, A, A);
+  let r = 0, g2 = 0, b = 0, k = 0;
+  for (let i = 0; i < c.data.length; i += 4) if (c.data[i + 3] > 200) { r += c.data[i]; g2 += c.data[i + 1]; b += c.data[i + 2]; k++; }
+  r /= k; g2 /= k; b /= k;
+  for (let y = 0; y < A; y++) for (let x = 0; x < A; x++) {
+    const i = (y * A + x) * 4;
+    const dx = ((x % Q) + 0.5) / Q - 0.5, dy = ((y % Q) + 0.5) / Q - 0.5;
+    const m = Math.min(1, Math.max(0, (0.5 - Math.hypot(dx, dy)) / 0.07));
+    const a = c.data[i + 3] * m;
+    c.data[i + 3] = a;
+    if (a < 8) { c.data[i] = r; c.data[i + 1] = g2; c.data[i + 2] = b; c.data[i + 3] = 0; }
+    const na = n.data[i + 3] / 255;
+    n.data[i] = n.data[i] * na + 128 * (1 - na); n.data[i + 1] = n.data[i + 1] * na + 128 * (1 - na); n.data[i + 2] = n.data[i + 2] * na + 255 * (1 - na); n.data[i + 3] = 255;
+  }
+  gc.putImageData(c, 0, 0); gn.putImageData(n, 0, 0);
+  const url = async (cv) => { const b = await cv.convertToBlob({ type: 'image/png' }); return new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }); };
+  return { key, size: A, n: set.length, c: await url(C), nm: await url(N) };
+}
+
+const out = [];
+for (const key of Object.keys(SPECIES)) if (!only || only.split(',').includes(key)) out.push(await species(key));
+window.__twigs = out;
+</script>
