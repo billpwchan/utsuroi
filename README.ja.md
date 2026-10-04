@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://billpwchan.github.io/utsuroi/"><img src="docs/media/banner.jpg" width="100%" alt="移ろい：夕暮れ、鯉の池越しに見る京の家。障子の奥に灯がともる"></a>
+  <a href="https://utsuroi.billpwchan.art/"><img src="docs/media/banner.jpg" width="100%" alt="移ろい：夕暮れ、鯉の池越しに見る京の家。障子の奥に灯がともる"></a>
 </p>
 
 <p align="center">
@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://billpwchan.github.io/utsuroi/"><b>サイトを開く</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#つくりかた">つくりかた</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#手元で動かす">手元で動かす</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="CREDITS.md">クレジット</a>
+  <a href="https://utsuroi.billpwchan.art/"><b>サイトを開く</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#つくりかた">つくりかた</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#手元で動かす">手元で動かす</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="CREDITS.md">クレジット</a>
 </p>
 
 <p align="center">

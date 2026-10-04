@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://billpwchan.github.io/utsuroi/"><img src="docs/media/banner.jpg" width="100%" alt="Utsuroi: a Kyoto house at dusk seen across its koi pond, lamps lit behind the shoji"></a>
+  <a href="https://utsuroi.billpwchan.art/"><img src="docs/media/banner.jpg" width="100%" alt="Utsuroi: a Kyoto house at dusk seen across its koi pond, lamps lit behind the shoji"></a>
 </p>
 
 <p align="center">
@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://billpwchan.github.io/utsuroi/"><b>Open the live site</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#how-it-is-made">How it is made</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#run-it-locally">Run it locally</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="CREDITS.md">Credits</a>
+  <a href="https://utsuroi.billpwchan.art/"><b>Open the live site</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#how-it-is-made">How it is made</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#run-it-locally">Run it locally</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="CREDITS.md">Credits</a>
 </p>
 
 <p align="center">
@@ -179,6 +179,16 @@ src/
 scripts/     asset, lightmap, screenshot and performance tooling
 public/      built assets: KTX2 textures, meshopt glTF, baked light
 ```
+
+## More scenes
+
+The same author's other real-time scenes, each open source and running in the browser.
+
+<table><tr>
+<td width="33%" valign="top"><a href="https://github.com/billpwchan/sakura-fantasy"><img src="https://raw.githubusercontent.com/billpwchan/sakura-fantasy/main/docs/media/social-preview.jpg" alt="桜幻想 Sakura Fantasy"></a><br><b><a href="https://github.com/billpwchan/sakura-fantasy">桜幻想 Sakura Fantasy</a></b><br><sub>A boat journey through a Japanese river valley in four seasons · <a href="https://sakura.billpwchan.art/">live</a></sub></td>
+<td width="33%" valign="top"><a href="https://github.com/billpwchan/halcyon"><img src="https://raw.githubusercontent.com/billpwchan/halcyon/main/docs/media/social-preview.jpg" alt="Halcyon"></a><br><b><a href="https://github.com/billpwchan/halcyon">Halcyon</a></b><br><sub>A tropical atoll through one day: FFT ocean, reef, bioluminescent night · <a href="https://halcyon.billpwchan.art/">live</a></sub></td>
+<td width="33%" valign="top"><a href="https://github.com/billpwchan/neon-zenith"><img src="https://raw.githubusercontent.com/billpwchan/neon-zenith/main/docs/media/social-preview.jpg" alt="霓虹天頂 Neon Zenith"></a><br><b><a href="https://github.com/billpwchan/neon-zenith">霓虹天頂 Neon Zenith</a></b><br><sub>A rain-soaked cyberpunk Hong Kong you can fly through (WebGPU) · <a href="https://zenith.billpwchan.art/">live</a></sub></td>
+</tr></table>
 
 ## Credits
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://billpwchan.github.io/utsuroi/"><img src="docs/media/banner.jpg" width="100%" alt="移ろい：黄昏时隔着锦鲤池望见的京都宅邸，障子后已点起灯"></a>
+  <a href="https://utsuroi.billpwchan.art/"><img src="docs/media/banner.jpg" width="100%" alt="移ろい：黄昏时隔着锦鲤池望见的京都宅邸，障子后已点起灯"></a>
 </p>
 
 <p align="center">
@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://billpwchan.github.io/utsuroi/"><b>打开在线版</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#它是怎么做的">它是怎么做的</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#在本地运行">在本地运行</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="CREDITS.md">致谢</a>
+  <a href="https://utsuroi.billpwchan.art/"><b>打开在线版</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#它是怎么做的">它是怎么做的</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#在本地运行">在本地运行</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="CREDITS.md">致谢</a>
 </p>
 
 <p align="center">
