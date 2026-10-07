@@ -180,6 +180,10 @@ scripts/     asset, lightmap, screenshot and performance tooling
 public/      built assets: KTX2 textures, meshopt glTF, baked light
 ```
 
+## Made with Claude Code
+
+Built with [Claude Code](https://claude.com/claude-code) running **Claude Opus 5.5**. I set the direction and reviewed every pass from screenshots and real-GPU frame timings; the model wrote the code, the shaders and the Blender bake scripts.
+
 ## More scenes
 
 The same author's other real-time scenes, each open source and running in the browser.
