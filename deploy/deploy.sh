@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Build and release to a Docker host behind a Caddy gateway: a new timestamped release, `current` repointed, the
-# container recreated. usage: KEY=<ssh key> HOST=<user@host> [SITE=https://...] deploy/deploy.sh
+# container recreated. usage: KEY=<ssh key> HOST=<user@host> [SITE=https://...] deploy/deploy.sh, or put them in
+# deploy/local.sh, which git ignores.
 # Earlier releases stay in /opt/utsuroi/releases for rollback (repoint `current`, then recreate).
 # compose.yaml is installed at /opt/utsuroi/, where its ./current and ./deploy paths resolve.
 # The gateway fragment (gateway.caddy, from gateway.caddy.example) is copied but not reloaded; after changing it,
 # validate and reload the gateway by hand.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+[ -f deploy/local.sh ] && . deploy/local.sh
 KEY=${KEY:?set KEY to the ssh key}
 HOST=${HOST:?set HOST to user@host}
 STAMP=$(date +%Y%m%d-%H%M%S)
