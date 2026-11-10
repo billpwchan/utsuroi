@@ -76,5 +76,5 @@ Hasegawa Tōhaku's *Pine Trees* screen in the genkan is the CC BY scan listed wi
 The house, its joinery and roofs, the terrain, the water, the sky, the bamboo and the far hills are procedural, written for this project. The baked light under `lm/` was rendered for it in Blender Cycles. The sound is synthesised in the browser. Nothing is recorded.
 
 - [three.js](https://threejs.org) (MIT) renders it all. Its KTX2 loader uses the [Basis Universal](https://github.com/BinomialLLC/basis_universal) transcoder in `public/basis/` (Apache 2.0, licence text in `public/basis/LICENSE.txt`).
-- Type: [Shippori Mincho B1](https://fonts.google.com/specimen/Shippori+Mincho+B1), [Cormorant Garamond](https://fonts.google.com/specimen/Cormorant+Garamond) and [IBM Plex Mono](https://fonts.google.com/specimen/IBM+Plex+Mono), all SIL Open Font License, served by Google Fonts.
+- Type: [Shippori Mincho B1](https://fonts.google.com/specimen/Shippori+Mincho+B1), [Cormorant Garamond](https://fonts.google.com/specimen/Cormorant+Garamond) and [IBM Plex Mono](https://fonts.google.com/specimen/IBM+Plex+Mono), all SIL Open Font License, self-hosted from `public/fonts` (Shippori cut to the characters the site uses; licence texts alongside).
 - The idea of walking a Japanese house through one day owes a debt to Meng To's [Seijaku](https://x.com/MengTo/status/2099898247959691523).
