@@ -1,5 +1,5 @@
 // Joinery: sliding panels (shoji, fusuma, glass), tatami layouts, ceilings, and the irimoya tile roof.
-// Dimensions follow the kyoma module: a ken of 1.82 m, openings 1.76 m high, posts 12 cm.
+// Dimensions follow a six-shaku ken of 1.82 m (the inakama measure; kyoma's ken is 1.97 m), openings 1.76 m high, posts 12 cm.
 import * as THREE from 'three';
 import { Kit, Geo, vec } from './kit.js';
 import { rng } from '../lib/math.js';

@@ -24,9 +24,9 @@
 
 > **移ろい** *utsuroi*: the passing of things; the way a colour, a season or a light changes while you watch it.
 
-Utsuroi is a walk through a house in the hills north of Kyoto. Fourteen resting places, from the gate before dawn to the koi pond at night, are joined by one continuous camera path. The scroll is the clock. Between two rooms the sun moves on, and if you stop, it keeps moving.
+Utsuroi is a walk through a house in the hills north of Kyoto. Fourteen resting places, from the gate before dawn to the koi pond at night, are joined by one continuous camera path. The scroll is the clock. Between two rooms the sun moves on, and at a resting place a little more scroll moves only the light.
 
-The stones, trees, lanterns and bowls are scans and models of real ones. The house is built in code on the old Kyoto module, and its light is path-traced offline and blended by the hour. A render-scale governor keeps it at 60 frames a second in a browser tab.
+The stones, trees, lanterns and bowls are scans and models of real ones. The house is built in code on the traditional six-shaku ken, and its light is path-traced offline and blended by the hour. A render-scale governor keeps it at 60 frames a second in a browser tab.
 
 <p align="center">
   <img src="docs/media/day.webp" width="100%" alt="Time-lapse of the house across the pond from 04:45 to 21:00: dawn mist, morning light, low gold sun, the lamps coming on, night">
@@ -98,7 +98,7 @@ Everything is plain [three.js](https://threejs.org) r186, with no engine and no 
   - caustics on the floor and rings where the koi rise.
 - **Koi.** A dozen koi of seven varieties share one scanned carp and swim by a travelling wave down the spine.
 - **The house.**
-  - **Layout.** It is generated in code on the *kyōma* module: a ken of 1.82 m, openings 1.76 m high, posts 12 cm. It has four wings, irimoya tile roofs, and shoji, fusuma and glass panels.
+  - **Layout.** It is generated in code on a six-shaku ken of 1.82 m, with openings 1.76 m high and posts 12 cm. It has four wings, irimoya tile roofs, and shoji, fusuma and glass panels.
   - **Materials.** Scanned materials are used where the real thing matters: tatami, hinoki, clay plaster, stone. Canvas-painted maps cover washi, karakami and gold leaf.
   - **Art.** The scrolls and screens are photographs of real works, including Tōhaku's *Pine Trees*.
 
